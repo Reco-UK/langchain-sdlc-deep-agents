@@ -38,6 +38,7 @@ jobs:
         run: docker compose -f docker-compose.yml up -d postgres redis qdrant jira-mock confluence-mock
 
       - name: Wait for postgres
+        timeout-minutes: 5
         run: |
           until docker compose exec -T postgres pg_isready -U agent -d agentforge; do sleep 2; done
 

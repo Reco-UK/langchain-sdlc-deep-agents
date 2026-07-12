@@ -24,7 +24,11 @@ services:
       CONFLUENCE_URL: http://confluence-mock:8081
       WORKSPACE_ROOT: /workspace
     env_file:
-      - .env
+      # Optional: local secrets (GITHUB_TOKEN, ANTHROPIC_API_KEY, ...) layered
+      # on top of the `environment:` block above. `required: false` means a
+      # fresh clone or CI (which never creates a .env) still resolves fine.
+      - path: .env
+        required: false
     volumes:
       - .:/workspace
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
