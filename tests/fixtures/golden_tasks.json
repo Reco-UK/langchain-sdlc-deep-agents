@@ -1,0 +1,12 @@
+[
+  {
+    "id": "add-health-endpoint",
+    "task": "Add a GET /ping endpoint to app/main.py that returns {\"pong\": true}.",
+    "min_review_score": 60
+  },
+  {
+    "id": "fix-off-by-one",
+    "task": "Fix the off-by-one error in the pagination helper in app/utils/paginate.py.",
+    "min_review_score": 60
+  }
+]

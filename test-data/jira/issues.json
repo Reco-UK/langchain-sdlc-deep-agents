@@ -1,0 +1,17 @@
+{
+  "issues": [
+    {
+      "key": "PROJ-123",
+      "fields": {
+        "summary": "Fix login bug",
+        "description": "Users are logged out after 5 minutes instead of the configured 30.",
+        "issuetype": { "name": "Bug" },
+        "status": { "name": "To Do" },
+        "acceptance_criteria": [
+          "Session persists for the configured timeout",
+          "Regression test added for session expiry"
+        ]
+      }
+    }
+  ]
+}

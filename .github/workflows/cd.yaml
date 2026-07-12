@@ -1,0 +1,55 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  GCP_REGION: us-central1
+  IMAGE: gcr.io/${{ secrets.GCP_PROJECT }}/langchain-sldc-deep-agents
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for gcr.io
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: runtime
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy langchain-sldc-deep-agents \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --platform managed \
+            --region "${{ env.GCP_REGION }}" \
+            --memory 4Gi \
+            --cpu 2 \
+            --min-instances 1 \
+            --timeout 3600 \
+            --set-env-vars "ENVIRONMENT=production,GCP_PROJECT=${{ secrets.GCP_PROJECT }},GCP_LOCATION=${{ env.GCP_REGION }},DEFAULT_PROVIDER=anthropic,FALLBACK_PROVIDER=openai" \
+            --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,OPENAI_API_KEY=openai-api-key:latest,GITHUB_TOKEN=github-token:latest,GITHUB_WEBHOOK_SECRET=github-webhook-secret:latest,POSTGRES_DSN=postgres-dsn:latest,JIRA_API_TOKEN=jira-api-token:latest,CONFLUENCE_API_TOKEN=confluence-api-token:latest"

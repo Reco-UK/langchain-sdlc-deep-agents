@@ -1,0 +1,141 @@
+# Config-first manifest for langchain-sldc-deep-agents.
+#
+# Adding a new node requires ZERO Python changes: define it here, drop a
+# prompt file in prompts/{node_id}/system.jinja2, wire it into `graph.edges`,
+# and restart. See .claude/configuration.md for the full schema reference.
+
+mcp_servers:
+  github:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env_mapping:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
+
+  jira:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-jira"]
+    env_mapping:
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
+      JIRA_URL: ${JIRA_URL}
+
+  confluence:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-confluence"]
+    env_mapping:
+      CONFLUENCE_API_TOKEN: ${CONFLUENCE_API_TOKEN}
+      CONFLUENCE_URL: ${CONFLUENCE_URL}
+
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+
+  git:
+    command: uvx
+    args: ["mcp-server-git", "--repository", "/workspace"]
+
+  shell:
+    # First-party MCP server (app/tools/mcp_servers/shell_server.py). No public
+    # MCP server exposes sandboxed shell/lint execution, so we ship a minimal
+    # one rather than letting nodes shell out directly from Python.
+    command: python
+    args: ["-m", "app.tools.mcp_servers.shell_server"]
+    env_mapping:
+      WORKSPACE_ROOT: ${WORKSPACE_ROOT}
+
+graph:
+  nodes:
+    - id: context_loader
+      type: llm_node
+      description: "Fetches requirements from GitHub/JIRA/Confluence."
+      model_preset: default
+      tools:
+        - get_issue
+        - search_issues
+        - fetch_jira_issue
+        - search_confluence
+      prompt_file: prompts/context_loader/system.jinja2
+      output_key: external_context
+
+    - id: planner
+      type: llm_node
+      description: "Breaks down the ticket/requirements into a technical plan."
+      model_preset: default
+      tools:
+        - read_file
+        - list_directory
+      prompt_file: prompts/planner/system.jinja2
+      output_key: plan
+
+    - id: coder
+      type: llm_node
+      description: "Implements code based on the plan and requirements."
+      model_preset: coding
+      tools:
+        - write_file
+        - run_shell_command
+        - git_commit
+      prompt_file: prompts/coder/system.jinja2
+      output_key: code
+
+    - id: reviewer
+      type: llm_node
+      description: "Performs static analysis, security, and logic checks."
+      model_preset: reasoning
+      tools:
+        - git_diff
+        - run_linter
+      prompt_file: prompts/reviewer/system.jinja2
+      output_key: review_report
+
+    - id: human_approval
+      type: interrupt_node
+      description: "Pauses the workflow for human sign-off."
+      output_key: human_decision
+
+    - id: summarizer
+      type: llm_node
+      description: "Compresses long contexts and generates final reports."
+      model_preset: default
+      tools: []
+      prompt_file: prompts/summarizer/system.jinja2
+      output_key: final_summary
+
+  edges:
+    - from: context_loader
+      to: planner
+    - from: planner
+      to: coder
+    - from: coder
+      to: reviewer
+    - from: summarizer
+      to: END
+
+  conditional_edges:
+    - from: reviewer
+      condition: quality_threshold
+      branches:
+        approved: summarizer
+        needs_work: coder
+        reject: human_approval
+
+    - from: human_approval
+      condition: check_approval
+      branches:
+        approved: summarizer
+        rejected: END
+
+  model_presets:
+    default:
+      provider: ollama
+      model: llama3.2
+      temperature: 0.3
+
+    coding:
+      provider: anthropic
+      model: claude-3-5-sonnet-20241022
+      temperature: 0.2
+
+    reasoning:
+      provider: anthropic
+      model: claude-3-5-sonnet-20241022
+      temperature: 0.4
